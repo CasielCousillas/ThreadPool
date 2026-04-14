@@ -1,0 +1,3 @@
+-1 Sincronizar el tema de los prints, hacer un thread especifico, con una funcion log que imprima cosas
+-2 Hacer una clase worker, que tome un puntero a una pool, y tengo su funcion operator(), que tiene la logica del trabjao
+-3 
