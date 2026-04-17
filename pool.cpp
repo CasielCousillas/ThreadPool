@@ -5,6 +5,7 @@
 #include <queue>
 #include <functional>
 #include <future>
+#include <type_traits>
 
 class ThreadPool{
 private:
@@ -41,13 +42,12 @@ public:
         }
     }
 
-    // Deberia tener que usar waits??? Puede haber suspicyus wakes?
     /*
         ! Imporante sobre esta funcion
         1- Uso F&& + Args&&... para aceptar cualquier callable y argumentos,
         preservando perfect forwarding (lvalues/rvalues).
 
-        2- Devuelve std::future<RetType>, donde RetType depende de f(args...).
+        2- Devuelve std::future<RetType>, donde RetType depende de F, Args...
         Esto permite obtener el resultado de forma asincrónica.
 
         3- Uso shared_ptr porque la tarea debe sobrevivir después de que addTask termina.
@@ -60,10 +60,13 @@ public:
         donde recibir el resultado, ANTES de ejecutar la tarea
     */
     template<typename F, typename... Args>
-    auto addTask(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
-        using RetType = decltype(f(args...));
+    auto addTask(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>> {
+        using RetType = std::invoke_result_t<F, Args...>;
 
-        // Bind de la función + argumentos -> ahora es una función sin parámetros
+        /*
+            ! Tratar de reemplazar este bind con una lambda
+        */
+         // Bind de la función + argumentos -> ahora es una función sin parámetros
         auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
 
         // packaged_task: encapsula la función y guarda el resultado en el future
@@ -104,6 +107,21 @@ public:
     }
 };
 
+int f1(int x, int y){
+    return x + y;
+}
+
+int f2(int x, int y){
+    return x * y;
+}
+
+
+
 int main(){
-    std::vector<std::future<int>> vec;
+    ThreadPool threadPool(5);
+
+    std::future<int> f = threadPool.addTask(f1, 1, (f2, (2, 3)));
+    std::cout << f.get() << std::endl;
+
+    threadPool.closePool();
 }
