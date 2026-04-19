@@ -1,6 +1,6 @@
 -1 Sincronizar el tema de los prints, hacer un thread especifico, con una funcion log que imprima cosas
 -2 Hacer una clase worker, que tome un puntero a una pool, y tengo su funcion operator(), que tiene la logica del trabjao
--3 
+-3 Implementar un sistema de shutdown cancel, donde no se ejecuten las tareas siguientes, tendria que tener en cuenta que los futures no queden colgados (es medio pro hacer eso)
 
 
 

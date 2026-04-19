@@ -63,14 +63,22 @@ public:
     auto addTask(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>> {
         using RetType = std::invoke_result_t<F, Args...>;
 
-        /*
-            ! Tratar de reemplazar este bind con una lambda
-        */
-         // Bind de la función + argumentos -> ahora es una función sin parámetros
-        auto func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
+        // Uso un lambda, ya que copia los argumentos y me permite encapsularlos
+        auto func_wrapper = 
+            [funct = std::forward<F>(f),
+            tup = std::make_tuple(std::forward<Args>(args)...)]() mutable{
+                /*
+                    Apply es un invoke para tuplas
+                    paso la tupla con move, para que pueda mover los valores almacenados
+                */
+                return std::apply(funct, std::move(tup));
+        };
 
-        // packaged_task: encapsula la función y guarda el resultado en el future
-        auto task_ptr = std::make_shared<std::packaged_task<RetType()>>(func);
+        // Uso package_task para almacenar mi funcion (poder usarla mas tarde) y su resultado en un future.
+        // Uso make_shared para que mi funcion almacenada en el packaged no muera al finalizar mi funcion 
+        // (la lambda que encolo tiene una referencia a este packaged)
+        auto task_ptr = std::make_shared<std::packaged_task<RetType()>>(func_wrapper);
+        // ACLARO, cuando tengo el RetType(), los parentesis vacios significa que no toma ningun parametro
         
         auto fut = task_ptr->get_future();
 
@@ -107,21 +115,29 @@ public:
     }
 };
 
-int f1(int x, int y){
-    return x + y;
+std::string f1(std::string word){
+    return word;
 }
 
 int f2(int x, int y){
     return x * y;
 }
 
+int f3(int& x){
+    return x = 10;
+}
 
-
+// Tratar que funcione con sobrecarga de funciones
 int main(){
     ThreadPool threadPool(5);
+    std::string a = "hola";
+    std::string b = "adios";
+    int x = 2;
 
-    std::future<int> f = threadPool.addTask(f1, 1, (f2, (2, 3)));
+    std::future<int> f = threadPool.addTask(f3, std::ref(x));
     std::cout << f.get() << std::endl;
 
     threadPool.closePool();
+
+    std::cout << x << std::endl;
 }
