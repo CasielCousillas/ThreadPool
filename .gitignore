@@ -1,0 +1,10 @@
+# ignorar archivos compilados
+*.o
+*.exe
+
+# ignorar carpeta bin
+.bin/
+
+# ignorar carpeta vscode
+.vscode/
+*.json

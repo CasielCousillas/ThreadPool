@@ -1,40 +1,27 @@
-#include <iostream>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
+#ifndef THREAD_POOL
+#define THREAD_POOL
+
+#include "blockingQueue.h"
 #include <functional>
 #include <future>
 #include <type_traits>
 
 class ThreadPool{
 private:
-    std::queue<std::function<void()>> q;
+    BlockingQueue<std::function<void()>> q;
     std::vector<std::thread> threads;
-    std::mutex m;
-    std::condition_variable cv;
-    bool closed = false;
-
+    
 private:
     void worker(){
-        while(true){
-            std::unique_lock<std::mutex> guard(m);
-            cv.wait(guard, [this] {return !q.empty() || closed;});
-            
-            if(closed && q.empty())
-                break;
-
-            auto f = std::move(q.front()); 
-            q.pop();
-            
-            guard.unlock();
+        std::function<void()> f;
+        while(q.pop(f)){
             f();
         }
     }
-
+    
 public:
-    ThreadPool(unsigned int consumer_count){
-        for(int i{}; i < consumer_count; i++){
+    ThreadPool(const size_t consumer_count, const size_t max_size_queue = 10) : q(max_size_queue){
+        for(size_t i{}; i < consumer_count; i++){
             /* Paso esos parametros, ya que, worker no es una funcion libre
                El thread necesita saber donde esta la funcion y sobre quien ejecutarla
                Por eso le paso el this, intermante la funcion worker es asi void work(ThreadPool* this)*/
@@ -63,7 +50,9 @@ public:
     auto addTask(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>> {
         using RetType = std::invoke_result_t<F, Args...>;
 
-        // Uso un lambda, ya que copia los argumentos y me permite encapsularlos
+        /*
+            Uso una lambda, que me permite mantener perfect Forwarding a su vez que encapsulo la funcion
+        */
         auto func_wrapper = 
             [funct = std::forward<F>(f),
             tup = std::make_tuple(std::forward<Args>(args)...)]() mutable{
@@ -82,30 +71,33 @@ public:
         
         auto fut = task_ptr->get_future();
 
-        {
-            std::unique_lock<std::mutex> lock(m);
-            if(closed)
-                throw std::runtime_error("ThreadPool closed");
+        // Encolo una lambda void() que ejecuta la task
+        // Esto permite que todos los workers ejecuten tareas con la misma interfaz
+        if(!q.push([task_ptr](){ (*task_ptr)(); /* ejecuta f(args...) y setea el future */}))
+            throw std::runtime_error("ThreadPool closed");
 
-            // Encolo una lambda void() que ejecuta la task
-            // Esto permite que todos los workers ejecuten tareas con la misma interfaz
-            q.emplace([task_ptr]() {
-                (*task_ptr)(); // ejecuta f(args...) y setea el future
-            });
-        }
-
-        cv.notify_one();
         return fut;
     }
 
+    template<typename F, typename... Args>
+    void addTaskDetached(F&& f, Args&&... args){
+
+        auto funct_wrapper = 
+            [funct = std::forward<F>(f),
+            tup = std::make_tuple(std::forward<Args>(args)...)]() mutable{
+                std::apply(funct, std::move(tup));
+        };
+
+        /*
+            Uso una lambda, y no le paso directamtne el move de funct_wrapper:
+            Mas adelante podria querer meter mas logica antro de esa funcion, como metricas, etc
+        */
+        if(!q.push([func = std::move(funct_wrapper)]() mutable {func();}))
+            throw std::runtime_error("ThreadPool closed");
+    }
+
     void closePool(){
-        {
-            std::lock_guard<std::mutex> guard(m);
-            if(closed)
-                return;
-            closed = true;
-        }
-        cv.notify_all();
+        q.close();
     }
 
     ~ThreadPool(){
@@ -115,29 +107,4 @@ public:
     }
 };
 
-std::string f1(std::string word){
-    return word;
-}
-
-int f2(int x, int y){
-    return x * y;
-}
-
-int f3(int& x){
-    return x = 10;
-}
-
-// Tratar que funcione con sobrecarga de funciones
-int main(){
-    ThreadPool threadPool(5);
-    std::string a = "hola";
-    std::string b = "adios";
-    int x = 2;
-
-    std::future<int> f = threadPool.addTask(f3, std::ref(x));
-    std::cout << f.get() << std::endl;
-
-    threadPool.closePool();
-
-    std::cout << x << std::endl;
-}
+#endif

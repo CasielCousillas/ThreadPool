@@ -1,9 +1,19 @@
 -1 Sincronizar el tema de los prints, hacer un thread especifico, con una funcion log que imprima cosas
 -2 Hacer una clase worker, que tome un puntero a una pool, y tengo su funcion operator(), que tiene la logica del trabjao
 -3 Implementar un sistema de shutdown cancel, donde no se ejecuten las tareas siguientes, tendria que tener en cuenta que los futures no queden colgados (es medio pro hacer eso)
-
+-4 Tratar de no usar std::funcition para el tpo del queue, mejor usar algun wrapper o asi, que permite moves-only, ya que ahora solo admite copiar
 
 
 -------------------
 -1 NO anda la sobrecarga de funciones, no le puedo pasar funcioens de funciones
 (Anda pero toma el ultimo parametro)
+
+
+Inverstigar sobre el static_assert
+template<typename F, typename... Args>
+void addTaskDetached(F&& f, Args&&... args) {
+    static_assert(
+        std::is_void_v<std::invoke_result_t<F, Args...>>,
+        "Detached tasks should return void"
+    );
+}
