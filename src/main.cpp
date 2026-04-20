@@ -26,11 +26,20 @@ void print(const std::string& word){
 // Tratar que funcione con sobrecarga de funciones
 // Probar que pasa si le meto funcoines que no van o no le meto una funcion
 int main(){
-    ThreadPool threadPool(3, 5);
+    BlockingQueue<int> q(3);
 
-    for(int i = 0; i < 100; i++){
-        threadPool.addTaskDetached(f3, i);
+    q.push(3);
+    q.push(4);
+    q.push(5);
+
+    q.push_timeout(10, std::chrono::milliseconds(100));
+
+    q.close();
+
+    int x;
+    while(q.pop(x)){
+        std::cout << x << '\n';
     }
 
-    threadPool.closePool();
+
 }
