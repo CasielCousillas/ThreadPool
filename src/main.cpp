@@ -1,45 +1,41 @@
 #include <iostream>
 #include "blockingQueue.h"
 #include "pool.h"
+#include "timerElapsed.h"
+#include "asyncLogger.h"
+#include "BenchmarkConfig.h"
 
-std::string f1(std::string word){
-    return word;
-}
+// 0.135671 con std::cout
+// 0.00185593 con asyncLogger
+// 0.001141 con std::stringstream
+// 0.00118941 sin nada
 
-int f2(int x, int y){
-    return x * y;
-}
+template<typename T>
+class MyQueueAdapter : public IQueue<T> {
+private:
+    BlockingQueue<T>& q;
 
-void f3(int x){
-    std::cout << x << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-}
+public:
+    MyQueueAdapter(BlockingQueue<T>& q) : q(q) {}
 
-const int f4(int x){
-    return x;
-}
-
-void print(const std::string& word){
-    std::cout << word << std::endl;
-}
-
-// Tratar que funcione con sobrecarga de funciones
-// Probar que pasa si le meto funcoines que no van o no le meto una funcion
-int main(){
-    BlockingQueue<int> q(3);
-
-    q.push(3);
-    q.push(4);
-    q.push(5);
-
-    q.push_timeout(10, std::chrono::milliseconds(100));
-
-    q.close();
-
-    int x;
-    while(q.pop(x)){
-        std::cout << x << '\n';
+    void push(T t) override {
+        q.push(std::move(t));
     }
 
+    bool pop(T& out) override {
+        return q.pop(out);
+    }
 
+    void close() override {
+        q.close();
+    }
+};
+
+int main(){
+    BenchmarkConfig cfg(BenchmarkConfig::TaskType::Medium, 1);
+    
+    BlockingQueue<std::function<void()>> real_queue(INT_MAX);
+    MyQueueAdapter<std::function<void()>> queue_adapter(real_queue);
+
+    make_run(queue_adapter, cfg);
 }

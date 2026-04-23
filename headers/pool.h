@@ -20,7 +20,7 @@ private:
     }
     
 public:
-    ThreadPool(const size_t consumer_count, const size_t max_size_queue = 10) : q(max_size_queue){
+    ThreadPool(const size_t consumer_count = std::thread::hardware_concurrency(), const size_t max_size_queue = 10) : q(max_size_queue){
         for(size_t i{}; i < consumer_count; i++){
             /* Paso esos parametros, ya que, worker no es una funcion libre
                El thread necesita saber donde esta la funcion y sobre quien ejecutarla
@@ -63,15 +63,14 @@ public:
                 return std::apply(funct, std::move(tup));
         };
 
-        // Uso package_task para almacenar mi funcion (poder usarla mas tarde) y su resultado en un future.
-        // Uso make_shared para que mi funcion almacenada en el packaged no muera al finalizar mi funcion 
+        // Uso package_task para almacenar mi funcion y su resultado en un future.
+        // Uso make_shared para que mi funcion almacenada en el packaged no muera al finalizar addTask
         // (la lambda que encolo tiene una referencia a este packaged)
         auto task_ptr = std::make_shared<std::packaged_task<RetType()>>(func_wrapper);
         // ACLARO, cuando tengo el RetType(), los parentesis vacios significa que no toma ningun parametro
         
         auto fut = task_ptr->get_future();
 
-        // Encolo una lambda void() que ejecuta la task
         // Esto permite que todos los workers ejecuten tareas con la misma interfaz
         if(!q.push([task_ptr](){ (*task_ptr)(); /* ejecuta f(args...) y setea el future */}))
             throw std::runtime_error("ThreadPool closed");
