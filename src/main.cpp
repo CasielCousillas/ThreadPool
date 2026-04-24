@@ -5,11 +5,6 @@
 #include "asyncLogger.h"
 #include "BenchmarkConfig.h"
 
-// 0.135671 con std::cout
-// 0.00185593 con asyncLogger
-// 0.001141 con std::stringstream
-// 0.00118941 sin nada
-
 template<typename T>
 class MyQueueAdapter : public IQueue<T> {
 private:
@@ -32,10 +27,21 @@ public:
 };
 
 int main(){
-    BenchmarkConfig cfg(BenchmarkConfig::TaskType::Medium, 1);
-    
-    BlockingQueue<std::function<void()>> real_queue(INT_MAX);
-    MyQueueAdapter<std::function<void()>> queue_adapter(real_queue);
+    using task = std::function<void()>;
 
-    make_run(queue_adapter, cfg);
+    for (auto task_type : {
+        BenchmarkConfig::TaskType::Light,
+        BenchmarkConfig::TaskType::Medium,
+        BenchmarkConfig::TaskType::HeavyCPU
+    }) {
+        BenchmarkConfig cfg;
+        BlockingQueue<task> real_queue(INT_MAX);
+        MyQueueAdapter<task> queue(real_queue);
+        cfg.producers = 1;
+        cfg.consumers = 5;
+        cfg.seconds_dur = 1;
+        cfg.task_type = task_type;
+
+        make_run(queue, cfg);
+    }
 }

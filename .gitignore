@@ -2,6 +2,9 @@
 *.o
 *.exe
 
+# ignorar archivos de texto
+*.txt
+
 # ignorar carpeta bin
 .bin/
 

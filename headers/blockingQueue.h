@@ -13,11 +13,10 @@ private:
     std::condition_variable cv;
     std::queue<T> q;
     const size_t max_size_queue;
-    size_t current_size;
     bool closed = false;
 
 public:
-    BlockingQueue(const size_t n) : max_size_queue(n), current_size(0){}
+    BlockingQueue(const size_t n) : max_size_queue(n){}
 
     /*
         Push garantiza que 
@@ -29,13 +28,12 @@ public:
     bool push(U&& value){
         {
             std::unique_lock<std::mutex> guard(m);
-            cv.wait(guard, [this] {return current_size < max_size_queue || closed;});
+            cv.wait(guard, [this] {return q.size() < max_size_queue || closed;});
 
             if(closed)
                 return false;
 
             q.push(std::forward<U>(value));
-            current_size++;
         }
         cv.notify_one();
         return true;
@@ -50,11 +48,10 @@ public:
     bool try_push(U&& value){
         {
             std::unique_lock<std::mutex> guard(m);
-            if(closed || current_size >= max_size_queue)
+            if(closed || q.size() >= max_size_queue)
                 return false;
             
             q.push(std::forward<U>(value));
-            current_size++;
         }
 
         cv.notify_one();
@@ -73,13 +70,12 @@ public:
             std::unique_lock<std::mutex> guard(m);
             auto deadline = std::chrono::steady_clock::now() + timeout;
             
-            if(!cv.wait_until(guard, deadline, [this] {return current_size < max_size_queue || closed;}) 
+            if(!cv.wait_until(guard, deadline, [this] {return q.size() < max_size_queue || closed;}) 
                 || closed){
                     return false;
                 }
             
             q.push(std::forward<U>(value));
-            current_size++;
         }
         cv.notify_one();
         return true;
@@ -94,14 +90,13 @@ public:
     bool pop(T& out){
         {
             std::unique_lock<std::mutex> guard(m);
-            cv.wait(guard, [this] {return current_size != 0 || closed;});
+            cv.wait(guard, [this] {return !q.empty() || closed;});
             
-            if(closed && current_size == 0)
+            if(closed && q.empty())
                 return false;
             
             out = std::move(q.front()); 
             q.pop();
-            current_size--;
         }
         cv.notify_one();
         return true;
@@ -117,12 +112,11 @@ public:
         {
             std::unique_lock<std::mutex> guard(m);
             
-            if(current_size == 0)
+            if(q.empty())
                 return false;
             
             out = std::move(q.front()); 
             q.pop();
-            current_size--;
         }
         cv.notify_one();
         return true;
@@ -140,14 +134,13 @@ public:
             std::unique_lock<std::mutex> guard(m);
             auto deadline = std::chrono::steady_clock::now() + timeout;
 
-            if(!cv.wait_until(guard, deadline, [this] {return current_size != 0 || closed;}) 
-                || current_size == 0){
+            if(!cv.wait_until(guard, deadline, [this] {return !q.empty() || closed;}) 
+                || q.empty()){
                     return false;
                 }
             
             out = std::move(q.front()); 
             q.pop();
-            current_size--;
         }
         cv.notify_one();
         return true;
@@ -168,7 +161,6 @@ public:
                 return;
             closed = true;
         }
-        cv.notify_all();
         cv.notify_all();
     }
 

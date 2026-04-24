@@ -18,21 +18,24 @@ private:
     bool closed = false;
     
 private:
+    //! Puedo en vez de desencolar de a un mensaje, vaciar la dequeu de una, reduciria contension
     void working(){
         std::string log;
         while(true){
+            std::deque<std::string> local;
+            {
             std::unique_lock<std::mutex> guard(m);
             cv.wait(guard, [this] {return !d.empty() || closed;});
 
             if(closed && d.empty())
                 break;
             
-            log = std::move(d.front());
-            d.pop_front();
+            std::swap(local, d);
+            }
 
-            guard.unlock();
-
-            std::cout.write(log.data(), log.size());
+            for(auto& log : local){
+                std::cout.write(log.data(), log.size());
+            }
         }
     }
 
@@ -46,10 +49,10 @@ public:
         std::ostringstream oss;
         (oss << ... << items);
         {
+            std::lock_guard<std::mutex> guard(m);
             if(closed)
                 return;
 
-            std::lock_guard<std::mutex> guard(m);
             d.emplace_back(oss.str());
         }
 
