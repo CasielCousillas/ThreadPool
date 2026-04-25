@@ -10,7 +10,8 @@ template <typename T>
 class BlockingQueue{
 private:
     std::mutex m;
-    std::condition_variable cv;
+    std::condition_variable cv_consumer;
+    std::condition_variable cv_producer;
     std::queue<T> q;
     const size_t max_size_queue;
     bool closed = false;
@@ -28,56 +29,14 @@ public:
     bool push(U&& value){
         {
             std::unique_lock<std::mutex> guard(m);
-            cv.wait(guard, [this] {return q.size() < max_size_queue || closed;});
+            cv_producer.wait(guard, [this] {return q.size() < max_size_queue || closed;});
 
             if(closed)
                 return false;
 
             q.push(std::forward<U>(value));
         }
-        cv.notify_one();
-        return true;
-    }
-
-    /*
-        Try_push garantiza que
-        - Devuelve true, el elemento fue insertado en la cola, exactamente una vez
-        - Devuelve false, si no hay espacio o esta la cola cerrada; el elemento no fue insertado en la cola
-    */
-    template<typename U>
-    bool try_push(U&& value){
-        {
-            std::unique_lock<std::mutex> guard(m);
-            if(closed || q.size() >= max_size_queue)
-                return false;
-            
-            q.push(std::forward<U>(value));
-        }
-
-        cv.notify_one();
-        return true;
-    }
-
-    /*
-        Push_timeout garantiza que
-        - Devuelve true, el elemento fue insertado en la cola, exactamente una vez
-        - Devuelve false, si no hay espacio, esta la cola cerrada o no pudo insertar en el tiempo limite
-            - El elemento no fue insertado en la cola
-    */
-    template<typename U, typename Rep, typename Period>
-    bool push_timeout(U&& value, const std::chrono::duration<Rep, Period>& timeout){
-        {
-            std::unique_lock<std::mutex> guard(m);
-            auto deadline = std::chrono::steady_clock::now() + timeout;
-            
-            if(!cv.wait_until(guard, deadline, [this] {return q.size() < max_size_queue || closed;}) 
-                || closed){
-                    return false;
-                }
-            
-            q.push(std::forward<U>(value));
-        }
-        cv.notify_one();
+        cv_consumer.notify_one();
         return true;
     }
 
@@ -90,7 +49,7 @@ public:
     bool pop(T& out){
         {
             std::unique_lock<std::mutex> guard(m);
-            cv.wait(guard, [this] {return !q.empty() || closed;});
+            cv_consumer.wait(guard, [this] {return !q.empty() || closed;});
             
             if(closed && q.empty())
                 return false;
@@ -98,51 +57,7 @@ public:
             out = std::move(q.front()); 
             q.pop();
         }
-        cv.notify_one();
-        return true;
-    }
-
-    /*
-        Pop garantiza que:
-            - El valor obtenido proviene de un push exitoso previo (FIFO)
-            - Devuelve true, si se pudo sacar y asignar un valor de la cola exitosamente
-            - Devuelve false, si la cola esta vacia, out queda intacto
-    */
-    bool try_pop(T& out){
-        {
-            std::unique_lock<std::mutex> guard(m);
-            
-            if(q.empty())
-                return false;
-            
-            out = std::move(q.front()); 
-            q.pop();
-        }
-        cv.notify_one();
-        return true;
-    }
-
-     /*
-        Pop garantiza que:
-            - El valor obtenido proviene de un push exitoso previo (FIFO)
-            - Devuelve true, si se pudo sacar y asignar un valor de la cola exitosamente
-            - Devuelve false, si la cola esta cerrada y vacia o no pudo popear en el tiempo limite, out queda intacto
-    */
-    template<typename Rep, typename Period>
-    bool pop_timeout(T& out, const std::chrono::duration<Rep, Period>& timeout){
-        {
-            std::unique_lock<std::mutex> guard(m);
-            auto deadline = std::chrono::steady_clock::now() + timeout;
-
-            if(!cv.wait_until(guard, deadline, [this] {return !q.empty() || closed;}) 
-                || q.empty()){
-                    return false;
-                }
-            
-            out = std::move(q.front()); 
-            q.pop();
-        }
-        cv.notify_one();
+        cv_producer.notify_one();
         return true;
     }
 
@@ -161,7 +76,8 @@ public:
                 return;
             closed = true;
         }
-        cv.notify_all();
+        cv_consumer.notify_all();
+        cv_producer.notify_all();
     }
 
     ~BlockingQueue(){
