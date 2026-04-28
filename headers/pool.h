@@ -8,19 +8,34 @@
 
 class ThreadPool{
 private:
-    BlockingQueue<std::function<void()>> q;
+    typedef std::function<void()> Task;
+    typedef std::deque<Task> local_queue_type;
+
+    BlockingQueue<Task> global_queue;
+    static inline thread_local std::unique_ptr<local_queue_type> local_queue;
     std::vector<std::thread> threads;
     
 private:
     void worker(){
-        std::function<void()> f;
-        while(q.pop(f)){
-            f();
+        // Garantizo que solo la thread pool tiene la cola local no vacia
+        local_queue.reset(new local_queue_type);
+
+        Task f;
+        while(true){
+            if(local_queue && !local_queue->empty()){
+                f = std::move(local_queue->front());
+                local_queue->pop_front();
+                f();
+            }else if(global_queue.pop(f)){
+                f();
+            }else{
+                break;
+            }
         }
     }
     
 public:
-    ThreadPool(const size_t consumer_count = std::thread::hardware_concurrency(), const size_t max_size_queue = 10) : q(max_size_queue){
+    ThreadPool(const size_t consumer_count = std::thread::hardware_concurrency(), const size_t max_size_queue = 10) : global_queue(max_size_queue){
         for(size_t i{}; i < consumer_count; i++){
             /* Paso esos parametros, ya que, worker no es una funcion libre
                El thread necesita saber donde esta la funcion y sobre quien ejecutarla
@@ -72,8 +87,12 @@ public:
         auto fut = task_ptr->get_future();
 
         // Esto permite que todos los workers ejecuten tareas con la misma interfaz
-        if(!q.push([task_ptr](){ (*task_ptr)(); /* ejecuta f(args...) y setea el future */}))
+        if(local_queue){
+            local_queue->push_back([task_ptr](){(*task_ptr)();});
+        }
+        else if(!global_queue.push([task_ptr](){ (*task_ptr)(); /* ejecuta f(args...) y setea el future */})){
             throw std::runtime_error("ThreadPool closed");
+        }
 
         return fut;
     }
@@ -91,12 +110,17 @@ public:
             Uso una lambda, y no le paso directamtne el move de funct_wrapper:
             Mas adelante podria querer meter mas logica antro de esa funcion, como metricas, etc
         */
-        if(!q.push([func = std::move(funct_wrapper)]() mutable {func();}))
+
+        if(local_queue){
+            local_queue->push_back([func = std::move(funct_wrapper)]() mutable {func();});
+        }
+        else if(!global_queue.push([func = std::move(funct_wrapper)]() mutable {func();})){
             throw std::runtime_error("ThreadPool closed");
+        }
     }
 
     void closePool(){
-        q.close();
+        global_queue.close();
     }
 
     ~ThreadPool(){

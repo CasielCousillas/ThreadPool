@@ -1,9 +1,9 @@
 #include <iostream>
 #include "blockingQueue.h"
 #include "pool.h"
-#include "timerElapsed.h"
-#include "asyncLogger.h"
-#include "BenchmarkConfig.h"
+#include ".extra/timerElapsed.h"
+#include ".extra/asyncLogger.h"
+#include ".extra/BenchmarkConfig.h"
 
 template<typename T>
 class MyQueueAdapter : public IQueue<T> {
@@ -45,3 +45,4 @@ int main(){
         make_run(queue, cfg);
     }
 }
+

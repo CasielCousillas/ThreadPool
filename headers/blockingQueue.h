@@ -12,7 +12,7 @@ private:
     std::mutex m;
     std::condition_variable cv_consumer;
     std::condition_variable cv_producer;
-    std::queue<T> q;
+    std::deque<T> q;
     const size_t max_size_queue;
     bool closed = false;
 
@@ -34,7 +34,7 @@ public:
             if(closed)
                 return false;
 
-            q.push(std::forward<U>(value));
+            q.push_back(std::forward<U>(value));
         }
         cv_consumer.notify_one();
         return true;
@@ -55,7 +55,7 @@ public:
                 return false;
             
             out = std::move(q.front()); 
-            q.pop();
+            q.pop_front();
         }
         cv_producer.notify_one();
         return true;
