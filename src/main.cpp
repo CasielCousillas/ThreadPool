@@ -37,7 +37,7 @@ int main(){
         BenchmarkConfig cfg;
         BlockingQueue<task> real_queue(INT_MAX);
         MyQueueAdapter<task> queue(real_queue);
-        cfg.producers = 1;
+        cfg.producers = 5;
         cfg.consumers = 5;
         cfg.seconds_dur = 1;
         cfg.task_type = task_type;
